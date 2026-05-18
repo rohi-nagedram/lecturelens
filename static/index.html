@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LectureLens</title>
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-950 text-white min-h-screen p-4">
+
+<div class="max-w-2xl mx-auto">
+  <!-- Header -->
+  <div class="text-center py-8">
+    <h1 class="text-4xl font-bold text-blue-400">🔍 LectureLens</h1>
+    <p class="text-gray-400 mt-2">Turn any lecture into Notes, Flashcards & Quiz</p>
+  </div>
+
+  <!-- Input Section -->
+  <div class="bg-gray-900 rounded-xl p-6 mb-6">
+    <!-- PDF Upload -->
+    <div class="mb-4">
+      <label class="block text-sm text-gray-400 mb-2">Upload Lecture PDF</label>
+      <input type="file" id="pdfInput" accept=".pdf"
+        class="w-full bg-gray-800 rounded-lg p-3 text-sm">
+    </div>
+
+    <div class="text-center text-gray-500 my-3">— OR —</div>
+
+    <!-- YouTube URL -->
+    <div class="mb-4">
+      <label class="block text-sm text-gray-400 mb-2">YouTube Lecture URL</label>
+      <input type="text" id="ytUrl" placeholder="https://youtube.com/watch?v=..."
+        class="w-full bg-gray-800 rounded-lg p-3 text-sm outline-none">
+    </div>
+
+    <button onclick="processInput()"
+      class="w-full bg-blue-600 hover:bg-blue-700 rounded-lg p-4 font-semibold text-lg">
+      ⚡ Generate
+    </button>
+  </div>
+
+  <!-- Loading -->
+  <div id="loading" class="hidden text-center py-8">
+    <div class="text-blue-400 text-xl animate-pulse">⏳ Processing lecture...</div>
+  </div>
+
+  <!-- Results -->
+  <div id="results" class="hidden">
+    <!-- Tabs -->
+    <div class="flex gap-2 mb-4">
+      <button onclick="showTab('notes')" id="tab-notes"
+        class="flex-1 bg-blue-600 rounded-lg p-3 font-semibold text-sm">📝 Notes</button>
+      <button onclick="showTab('flashcards')" id="tab-flashcards"
+        class="flex-1 bg-gray-800 rounded-lg p-3 font-semibold text-sm">🃏 Flashcards</button>
+      <button onclick="showTab('quiz')" id="tab-quiz"
+        class="flex-1 bg-gray-800 rounded-lg p-3 font-semibold text-sm">❓ Quiz</button>
+    </div>
+
+    <!-- Notes Tab -->
+    <div id="notes-section">
+      <div class="bg-gray-900 rounded-xl p-5 mb-4">
+        <h3 class="text-blue-400 font-bold mb-3">📋 Summary</h3>
+        <p id="summary" class="text-gray-300 text-sm leading-relaxed"></p>
+      </div>
+      <div class="bg-gray-900 rounded-xl p-5 mb-4">
+        <h3 class="text-blue-400 font-bold mb-3">💡 Key Concepts</h3>
+        <ul id="concepts" class="text-gray-300 text-sm space-y-2"></ul>
+      </div>
+      <div class="bg-gray-900 rounded-xl p-5">
+        <h3 class="text-blue-400 font-bold mb-3">📖 Definitions</h3>
+        <div id="definitions" class="space-y-3"></div>
+      </div>
+    </div>
+
+    <!-- Flashcards Tab -->
+    <div id="flashcards-section" class="hidden">
+      <div id="flashcard-container" class="space-y-3"></div>
+    </div>
+
+    <!-- Quiz Tab -->
+    <div id="quiz-section" class="hidden">
+      <div id="quiz-container" class="space-y-4"></div>
+      <button onclick="submitQuiz()"
+        class="w-full bg-green-600 rounded-lg p-4 font-semibold mt-4">
+        ✅ Submit Quiz
+      </button>
+      <div id="quiz-score" class="hidden text-center text-2xl font-bold text-green-400 mt-4"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+let quizData = [];
+let currentCard = 0;
+
+async function processInput() {
+  const pdfFile = document.getElementById('pdfInput').files[0];
+  const ytUrl = document.getElementById('ytUrl').value.trim();
+
+  if (!pdfFile && !ytUrl) {
+    alert('Please upload a PDF or enter a YouTube URL');
+    return;
+  }
+
+  document.getElementById('loading').classList.remove('hidden');
+  document.getElementById('results').classList.add('hidden');
+
+  try {
+    let data;
+    if (pdfFile) {
+      const formData = new FormData();
+      formData.append('file', pdfFile);
+      const res = await fetch('/upload-pdf', { method: 'POST', body: formData });
+      data = await res.json();
+    } else {
+      const res = await fetch('/youtube', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: ytUrl })
+      });
+      data = await res.json();
+    }
+
+    renderResults(data);
+  } catch (err) {
+    alert('Error: ' + err.message);
+  } finally {
+    document.getElementById('loading').classList.add('hidden');
+  }
+}
+
+function renderResults(data) {
+  // Notes
+  document.getElementById('summary').textContent = data.notes.summary;
+  const conceptsList = document.getElementById('concepts');
+  conceptsList.innerHTML = data.notes.concepts.map(c => `<li>• ${c}</li>`).join('');
+  const defDiv = document.getElementById('definitions');
+  defDiv.innerHTML = data.notes.definitions.map(d =>
+    `<div class="bg-gray-800 rounded-lg p-3">
+      <span class="text-blue-300 font-semibold">${d.term}:</span>
+      <span class="text-gray-300 text-sm"> ${d.meaning}</span>
+    </div>`).join('');
+
+  // Flashcards
+  const fcDiv = document.getElementById('flashcard-container');
+  fcDiv.innerHTML = data.flashcards.map((fc, i) =>
+    `<div class="bg-gray-900 rounded-xl p-5 cursor-pointer" onclick="flipCard(this)">
+      <div class="front">
+        <span class="text-xs text-blue-400">QUESTION</span>
+        <p class="mt-2 font-semibold">${fc.front}</p>
+      </div>
+      <div class="back hidden">
+        <span class="text-xs text-green-400">ANSWER</span>
+        <p class="mt-2 text-green-300">${fc.back}</p>
+      </div>
+    </div>`).join('');
+
+  // Quiz
+  quizData = data.quiz;
+  const quizDiv = document.getElementById('quiz-container');
+  quizDiv.innerHTML = data.quiz.map((q, i) =>
+    `<div class="bg-gray-900 rounded-xl p-5">
+      <p class="font-semibold mb-3">${i+1}. ${q.question}</p>
+      <div class="space-y-2">
+        ${q.options.map(opt =>
+          `<label class="flex items-center gap-3 bg-gray-800 rounded-lg p-3 cursor-pointer">
+            <input type="radio" name="q${i}" value="${opt[0]}">
+            <span class="text-sm">${opt}</span>
+          </label>`).join('')}
+      </div>
+    </div>`).join('');
+
+  document.getElementById('results').classList.remove('hidden');
+  showTab('notes');
+}
+
+function flipCard(el) {
+  el.querySelector('.front').classList.toggle('hidden');
+  el.querySelector('.back').classList.toggle('hidden');
+}
+
+function showTab(tab) {
+  ['notes','flashcards','quiz'].forEach(t => {
+    document.getElementById(`${t}-section`).classList.add('hidden');
+    document.getElementById(`tab-${t}`).classList.remove('bg-blue-600');
+    document.getElementById(`tab-${t}`).classList.add('bg-gray-800');
+  });
+  document.getElementById(`${tab}-section`).classList.remove('hidden');
+  document.getElementById(`tab-${tab}`).classList.remove('bg-gray-800');
+  document.getElementById(`tab-${tab}`).classList.add('bg-blue-600');
+}
+
+function submitQuiz() {
+  let score = 0;
+  quizData.forEach((q, i) => {
+    const selected = document.querySelector(`input[name="q${i}"]:checked`);
+    if (selected && selected.value === q.answer) score++;
+  });
+  const scoreDiv = document.getElementById('quiz-score');
+  scoreDiv.textContent = `You scored ${score}/${quizData.length} 🎯`;
+  scoreDiv.classList.remove('hidden');
+}
+</script>
+</body>
+</html>

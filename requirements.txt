@@ -1,0 +1,6 @@
+fastapi
+uvicorn
+pdfplumber
+groq
+youtube-transcript-api
+python-multipart
